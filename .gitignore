@@ -11,8 +11,7 @@ env/
 
 # Stable Baselines3 logs and models
 pong-ai/logs/
-pong-ai/pong_agent.zip
-pong-ai/pong_agent_v1.0
+pong-ai/models/
 
 # VS Code settings
 .vscode/

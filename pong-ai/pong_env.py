@@ -17,10 +17,10 @@ class PongEnv(gym.Env):
         self.paddle_width = 10
         self.paddle_height = 60
         self.paddle_speed = 8
-        self.paddle1_y = self.screen_height / 2
-        self.paddle2_y = self.screen_height / 2
-        self.ball_x = 200
-        self.ball_y = 200
+        self.paddle1_y = self.screen_height //2
+        self.paddle2_y = self.screen_height //2
+        self.ball_x = self.screen_width // 2
+        self.ball_y = self.screen_height // 2
         self.ball_speed = 4
         self.ball_vel_x = self.ball_speed * random.choice([1, -1])
         self.ball_vel_y = self.ball_speed * random.choice([1, -1])
@@ -47,10 +47,10 @@ class PongEnv(gym.Env):
         Reset the environment to the initial state.
         """
         super().reset(seed=seed)
-        self.ball_x = 200
-        self.ball_y = 150
-        self.paddle1_y = self.screen_height / 2
-        self.paddle2_y = self.screen_height / 2
+        self.ball_x = self.screen_width // 2
+        self.ball_y = self.screen_height // 2
+        self.paddle1_y = self.screen_height //2
+        self.paddle2_y = self.screen_height //2
         self.ball_speed = 4
         self.ball_vel_x = self.ball_speed * random.choice([1, -1])
         self.ball_vel_y = self.ball_speed * random.choice([1, -1])

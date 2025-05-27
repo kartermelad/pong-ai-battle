@@ -2,7 +2,7 @@ from pong_env import PongEnv
 from stable_baselines3 import PPO
 
 env = PongEnv()
-ppo_model = PPO.load("pong_agent")
+ppo_model = PPO.load("models/pong_agent")
 
 obs, _ = env.reset()
 done = False
