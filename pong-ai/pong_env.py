@@ -4,21 +4,14 @@ import pygame as pg
 import random
 
 class PongEnv(gym.Env):
-    """
-    Custom Pong environment for reinforcement learning
-    """
-
     def __init__(self, render_mode=None):
-        """
-        Initialize the Pong environment, paddles, ball, and action/observation spaces
-        """
         self.screen_width = 800
         self.screen_height = 600
         self.paddle_width = 10
         self.paddle_height = 60
         self.paddle_speed = 8
-        self.paddle1_y = self.screen_height //2
-        self.paddle2_y = self.screen_height //2
+        self.paddle1_y = self.screen_height // 2
+        self.paddle2_y = self.screen_height // 2
         self.ball_x = self.screen_width // 2
         self.ball_y = self.screen_height // 2
         self.ball_speed = 4
@@ -27,9 +20,11 @@ class PongEnv(gym.Env):
         self.paddle1_vel = 0
         self.paddle2_vel = 0
         self.paddle_hits = 0
+        self.steps = 0
+
         self.action_space = gym.spaces.Discrete(3)
-        low = np.array([0, 0, -1, -1, 0, 0, -1, -1], dtype=np.float32)
-        high = np.array([1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32)
+        low = np.array([0, 0, -1, -1, 0, 0, -1, -1, -1, 0, -1], dtype=np.float32)
+        high = np.array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], dtype=np.float32)
         self.observation_space = gym.spaces.Box(low=low, high=high, dtype=np.float32)
 
         pg.init()
@@ -43,33 +38,28 @@ class PongEnv(gym.Env):
         self.render_mode = render_mode
 
     def reset(self, seed=None, options=None):
-        """
-        Reset the environment to the initial state.
-        """
         super().reset(seed=seed)
         self.ball_x = self.screen_width // 2
         self.ball_y = self.screen_height // 2
-        self.paddle1_y = self.screen_height //2
-        self.paddle2_y = self.screen_height //2
+        self.paddle1_y = self.screen_height // 2
+        self.paddle2_y = self.screen_height // 2
         self.ball_speed = 4
         self.ball_vel_x = self.ball_speed * random.choice([1, -1])
         self.ball_vel_y = self.ball_speed * random.choice([1, -1])
         self.paddle1_vel = 0
         self.paddle2_vel = 0
         self.paddle_hits = 0
+        self.steps = 0
         return self._get_obs(), {}
 
     def _get_obs(self):
-        """
-        Build and return the normalized observation vector
-        """
         current_speed = np.sqrt(self.ball_vel_x ** 2 + self.ball_vel_y ** 2)
-        if current_speed == 0:
-            norm_ball_vel_x = 0
-            norm_ball_vel_y = 0
-        else:
-            norm_ball_vel_x = self.ball_vel_x / current_speed
-            norm_ball_vel_y = self.ball_vel_y / current_speed
+        norm_ball_vel_x = self.ball_vel_x / current_speed if current_speed != 0 else 0
+        norm_ball_vel_y = self.ball_vel_y / current_speed if current_speed != 0 else 0
+
+        paddle_to_ball_y = (self.ball_y - self.paddle1_y) / (self.screen_height - self.paddle_height)
+        speed_mag = np.log1p(current_speed) / np.log1p(100.0)
+        velocity_angle = np.arctan2(self.ball_vel_y, self.ball_vel_x) / np.pi
 
         obs = np.array([
             self.ball_x / self.screen_width,
@@ -79,14 +69,22 @@ class PongEnv(gym.Env):
             self.paddle1_y / (self.screen_height - self.paddle_height),
             self.paddle2_y / (self.screen_height - self.paddle_height),
             self.paddle1_vel / self.paddle_speed,
-            self.paddle2_vel / self.paddle_speed
+            self.paddle2_vel / self.paddle_speed,
+            paddle_to_ball_y,
+            speed_mag,
+            velocity_angle
         ], dtype=np.float32)
         return obs
 
+
     def step(self, action):
-        """
-        Take an action, update the environment, and return the new state, reward, and done flags
-        """
+        self.steps += 1
+        # truncated = self.steps >= 1000
+        truncated = False
+        terminated = False
+        reward = -0.01
+
+        # Paddle 1 control
         if action == 1:
             self.paddle1_vel = -self.paddle_speed
         elif action == 2:
@@ -96,6 +94,7 @@ class PongEnv(gym.Env):
         self.paddle1_y += self.paddle1_vel
         self.paddle1_y = max(0, min(self.paddle1_y, self.screen_height - self.paddle_height))
 
+        # Paddle 2 auto-follow
         paddle2_center = self.paddle2_y + self.paddle_height / 2
         if self.ball_y < paddle2_center:
             self.paddle2_vel = -self.paddle_speed
@@ -106,42 +105,39 @@ class PongEnv(gym.Env):
         self.paddle2_y += self.paddle2_vel
         self.paddle2_y = max(0, min(self.paddle2_y, self.screen_height - self.paddle_height))
 
+        # Ball movement
         self.ball_x += self.ball_vel_x
         self.ball_y += self.ball_vel_y
 
-        if self.ball_y <= 0:
-            self.ball_y = 0
+        if self.ball_y <= 0 or self.ball_y >= self.screen_height:
             self.ball_vel_y *= -1
-        elif self.ball_y >= self.screen_height:
-            self.ball_y = self.screen_height
-            self.ball_vel_y *= -1
+            self.ball_y = max(0, min(self.ball_y, self.screen_height))
 
-        terminated = False
-        truncated = False
-        reward = 0
-
+        # Check paddle 1 collision
         if self.ball_x <= self.paddle_width:
             if self.paddle1_y <= self.ball_y <= self.paddle1_y + self.paddle_height:
                 self.ball_x = self.paddle_width
                 self.ball_vel_x *= -1
                 self.paddle_hits += 1
                 self.ball_speed += 0.5
-                direction_x = 1 if self.ball_vel_x > 0 else -1
+                direction_x = 1
                 direction_y = 1 if self.ball_vel_y > 0 else -1
                 self.ball_vel_x = self.ball_speed * direction_x
                 self.ball_vel_y = self.ball_speed * direction_y
+                reward += 0.1  # hit reward
             else:
                 reward = -1
                 terminated = True
                 return self._get_obs(), reward, terminated, truncated, {}
 
+        # Check paddle 2 collision
         if self.ball_x >= self.screen_width - self.paddle_width:
             if self.paddle2_y <= self.ball_y <= self.paddle2_y + self.paddle_height:
                 self.ball_x = self.screen_width - self.paddle_width
                 self.ball_vel_x *= -1
                 self.paddle_hits += 1
-                self.ball_speed += 0.5 
-                direction_x = 1 if self.ball_vel_x > 0 else -1
+                self.ball_speed += 0.5
+                direction_x = -1
                 direction_y = 1 if self.ball_vel_y > 0 else -1
                 self.ball_vel_x = self.ball_speed * direction_x
                 self.ball_vel_y = self.ball_speed * direction_y
@@ -150,12 +146,14 @@ class PongEnv(gym.Env):
                 terminated = True
                 return self._get_obs(), reward, terminated, truncated, {}
 
+        # Distance penalty
+        paddle_center = self.paddle1_y + self.paddle_height / 2
+        distance_penalty = -abs(paddle_center - self.ball_y) / self.screen_height
+        reward += 0.01 * distance_penalty
+
         return self._get_obs(), reward, terminated, truncated, {}
-    
+
     def render(self, mode="human"):
-        """
-        Render the Pong game using pygame
-        """
         if self.screen is None:
             self.screen = pg.display.set_mode((self.screen_width, self.screen_height))
             pg.display.set_caption("Pong RL")
@@ -182,9 +180,6 @@ class PongEnv(gym.Env):
         self.clock.tick(60)
 
     def close(self):
-        """
-        Closes the game window 
-        """
         if self.screen:
             pg.quit()
             self.screen = None
